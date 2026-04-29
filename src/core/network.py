@@ -19,10 +19,12 @@ class NetworkManager:
         self.session = requests.Session(impersonate="firefox147")
         token = os.getenv("GITHUB_TOKEN")
         self._gh_headers: dict[str, str] = {"Authorization": f"token {token}"} if token else {}
+        self._request_lock = threading.Lock()
 
     def get(self, url: str, headers: dict[str, str] | None = None) -> str:
         try:
-            resp = self.session.get(url, timeout=10, allow_redirects=True, headers=headers)
+            with self._request_lock:
+                resp = self.session.get(url, timeout=10, allow_redirects=True, headers=headers)
             if (code := resp.status_code) >= 400:
                 epr(f"HTTP {code} for {url}: {resp.text[:200].replace('\n', ' ')}")
                 resp.raise_for_status()
@@ -45,7 +47,8 @@ class NetworkManager:
             tmp = dest.with_name(f"tmp.{dest.name}")
             tmp.unlink(missing_ok=True)
             try:
-                resp = self.session.get(url, timeout=10, stream=True, allow_redirects=True, headers=headers)
+                with self._request_lock:
+                    resp = self.session.get(url, timeout=10, stream=True, allow_redirects=True, headers=headers)
                 resp.raise_for_status()
                 with tmp.open("wb") as fh:
                     for chunk in resp.iter_content(chunk_size=131072):
