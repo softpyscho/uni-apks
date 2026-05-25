@@ -31,11 +31,14 @@ def get_highest_ver(versions: list[str]) -> str:
 
 def fetch_prebuilts(cli_src: str, cli_ver: str, patches_src: str, patches_ver: str, net: NetworkManager) -> Prebuilts:
     patches_org = patches_src.split("/")[0]
+    cli_org = cli_src.split("/")[0]
     cl_dir = TEMP_DIR / patches_org.lower()
+    cli_dir = TEMP_DIR / cli_org.lower()
     cl_dir.mkdir(parents=True, exist_ok=True)
+    cli_dir.mkdir(parents=True, exist_ok=True)
 
     pr(f"Getting prebuilts ({patches_org})")
-    cli_jar, cli_cl = _fetch_single_asset(cli_src, "CLI", cli_ver, "cli", "jar", cl_dir, net)
+    cli_jar, cli_cl = _fetch_single_asset(cli_src, "CLI", cli_ver, "cli", "jar", cli_dir, net)
     patches_mpp, patches_cl = _fetch_single_asset(patches_src, "Patches", patches_ver, "patches", "mpp", cl_dir, net)
     combined = cli_cl + patches_cl
     if combined:

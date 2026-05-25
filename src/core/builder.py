@@ -154,6 +154,15 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
 def _submit_entries(entries: list[AppEntry], pool: ThreadPoolExecutor, net: NetworkManager, ks_path: Path | None, strict_sigcheck: bool) -> list[Future[str | None]]:
     futures: list[Future[str | None]] = []
     build_cache: dict[tuple[str, str, str, str], tuple[Prebuilts, PatcherCLI]] = {}
+    unique_reqs = {(e.cli_source, e.cli_version, e.patches_source, e.patches_version) for e in entries if e.dl_from}
+    for req in unique_reqs:
+        cli_src, cli_ver, patches_src, patches_ver = req
+        try:
+            prebuilts = fetch_prebuilts(cli_src, cli_ver, patches_src, patches_ver, net)
+            build_cache[req] = (prebuilts, PatcherCLI(prebuilts.cli_jar, prebuilts.patches_mpp, APKSIGNER, ks_path=ks_path))
+        except Exception as exc:
+            epr(f"Could not get prebuilts for '{patches_src}': {exc}")
+
     for entry in entries:
         if not entry.dl_from:
             epr(f"No 'dlurl' option was set for '{entry.table}'")
@@ -161,12 +170,7 @@ def _submit_entries(entries: list[AppEntry], pool: ThreadPoolExecutor, net: Netw
 
         key = (entry.cli_source, entry.cli_version, entry.patches_source, entry.patches_version)
         if key not in build_cache:
-            try:
-                prebuilts = fetch_prebuilts(cli_src=entry.cli_source, cli_ver=entry.cli_version, patches_src=entry.patches_source, patches_ver=entry.patches_version, net=net)
-                build_cache[key] = (prebuilts, PatcherCLI(prebuilts.cli_jar, prebuilts.patches_mpp, APKSIGNER, ks_path=ks_path))
-            except Exception as exc:
-                epr(f"Could not get prebuilts for '{entry.table}': {exc}")
-                continue
+            continue
 
         _, patcher = build_cache[key]
         arches = ("arm64-v8a", "armeabi-v7a") if entry.arch == "both" else (entry.arch,)
