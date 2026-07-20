@@ -138,7 +138,7 @@ def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher:
     version_f = version.replace(" ", "").lstrip("v")
     auto_patches = patcher.resolve_auto_patches(list_patches)
     final_args = patcher.build_patch_args(patches=entry.patches, extra_args=entry.patcher_args, arch=arch, auto_patches=auto_patches, exclusive=entry.exclusive_patches, force=force)
-    base_name = f"{entry.app_name.lower().replace(" ", "-")}-{entry.brand.lower().replace(" ", "-")}"
+    base_name = f"{entry.app_name.lower().replace(' ', '-')}-{entry.brand.lower().replace(' ', '-')}"
     apk_name = f"{base_name}-v{version_f}-{arch_f}.apk"
     patched_apk = TEMP_DIR / apk_name
 
@@ -158,7 +158,20 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         pkg_name, dl_from, failed_sources = _find_pkg_name(entry, scrapers)
         list_patches = patcher.list_patches(pkg_name, experimental=entry.version == "latest")
         version, force = _resolve_version(entry, patcher, list_patches, pkg_name, dl_from, scrapers)
-        dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
+        
+        try:
+            dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
+        except BuilderError as exc:
+            # Automatic fallback to 'latest' when target auto-version is missing across all mirrors
+            if entry.version == "auto":
+                wpr(f"Exact version '{version}' for '{label}' was not found on mirrors. Falling back to 'latest'...")
+                version = "latest"
+                force = True  # Enable experimental flag for patcher
+                list_patches = patcher.list_patches(pkg_name, experimental=True)
+                dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
+            else:
+                raise exc
+
         _verify_sig(dl_result, pkg_name, patcher, label, entry.skip_sigcheck, strict_sigcheck)
         apk_output = _apply_patch(entry, arch, version, force, patcher, list_patches, dl_result)
         pr(f"Built {label}: '{apk_output}'")
