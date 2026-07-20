@@ -170,11 +170,17 @@ def _verify_sig(dl_result: DownloadResult, pkg_name: str, patcher: PatcherCLI, t
             raise SignatureError("Bundle APK signature mismatch")
 
 
-def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher: PatcherCLI, list_patches: str, dl_result: DownloadResult) -> Path:
+def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher: PatcherCLI, list_patches: str, dl_result: DownloadResult, excluded_patches: list[str]) -> Path:
     arch_f = arch.replace(" ", "")
     version_f = version.replace(" ", "").lstrip("v")
     auto_patches = patcher.resolve_auto_patches(list_patches)
-    final_args = patcher.build_patch_args(patches=entry.patches, extra_args=entry.patcher_args, arch=arch, auto_patches=auto_patches, exclusive=entry.exclusive_patches, force=force)
+    
+    # Inject dynamically excluded patches
+    dynamic_args = list(entry.patcher_args)
+    for p in excluded_patches:
+        dynamic_args.extend(["-e", p])
+        
+    final_args = patcher.build_patch_args(patches=entry.patches, extra_args=dynamic_args, arch=arch, auto_patches=auto_patches, exclusive=entry.exclusive_patches, force=force)
     base_name = f"{entry.app_name.lower().replace(' ', '-')}-{entry.brand.lower().replace(' ', '-')}"
     apk_name = f"{base_name}-v{version_f}-{arch_f}.apk"
     patched_apk = TEMP_DIR / apk_name
@@ -200,45 +206,45 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         try:
             dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
         except BuilderError as exc:
-            # Fallback to candidate versions when auto-version fails
+            # Fallback handling when auto-version fails
             if entry.version == "auto":
                 fallback_version = None
                 dl_result_fallback = None
-
-                fallback_order = [s for s in ["apkpure", "uptodown", "github"] if s in entry.dl_urls]
-                if "apkmirror" in entry.dl_urls:
-                    fallback_order.append("apkmirror")
+                fallback_order = [s for s in ["uptodown", "apkpure", "github", "apkmirror"] if s in entry.dl_urls]
 
                 for src in fallback_order:
+                    if src in failed_sources: continue
                     try:
                         versions = scrapers[src].cached_metadata(entry.dl_urls[src]).versions
-                        if not versions:
-                            continue
-
-                        # Prioritize versions strictly below the recommended target version
-                        candidate_versions = _get_versions_below(versions, version)
-                        
-                        # Failsafe: if no older versions exist, grab the newest available
-                        if not candidate_versions:
-                            highest_ver = get_highest_ver(versions)
-                            if highest_ver:
-                                wpr(f"No versions below '{version}' found on '{src}'. Falling back to highest available '{highest_ver}'")
-                                candidate_versions = [highest_ver]
-
-                        for candidate_ver in candidate_versions:
-                            wpr(f"Target version '{version}' unavailable. Trying candidate version '{candidate_ver}' from '{src}'...")
+                        if not versions: continue
+                        lower_candidates = _get_versions_below(versions, version)
+                        for candidate_ver in lower_candidates:
+                            wpr(f"Target '{version}' unavailable. Trying lower version '{candidate_ver}' from '{src}'...")
                             try:
                                 dl_result_fallback = _download_apk(entry, candidate_ver, arch, pkg_name, scrapers, src, failed_sources)
                                 fallback_version = candidate_ver
                                 break
-                            except BuilderError:
-                                wpr(f"Failed to download version '{candidate_ver}' from '{src}', trying next candidate...")
-                                continue
-
-                        if dl_result_fallback:
-                            break
+                            except BuilderError: continue
+                        if dl_result_fallback: break
                     except Exception:
-                        continue
+                        failed_sources.add(src)
+
+                if not dl_result_fallback:
+                    for src in fallback_order:
+                        if src in failed_sources: continue
+                        try:
+                            versions = scrapers[src].cached_metadata(entry.dl_urls[src]).versions
+                            if not versions: continue
+                            highest_ver = get_highest_ver(versions)
+                            if highest_ver:
+                                wpr(f"No lower versions available. Falling back to highest available '{highest_ver}' from '{src}'...")
+                                try:
+                                    dl_result_fallback = _download_apk(entry, highest_ver, arch, pkg_name, scrapers, src, failed_sources)
+                                    fallback_version = highest_ver
+                                    break
+                                except BuilderError: continue
+                        except Exception:
+                            failed_sources.add(src)
 
                 if fallback_version and dl_result_fallback:
                     version = fallback_version
@@ -251,11 +257,43 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
                 raise exc
 
         _verify_sig(dl_result, pkg_name, patcher, label, entry.skip_sigcheck, strict_sigcheck)
-        apk_output = _apply_patch(entry, arch, version, force, patcher, list_patches, dl_result)
+        
+        # Dynamic Exclude Loop
+        excluded_patches = []
+        max_retries = 10
+        apk_output = None
+        
+        for attempt in range(max_retries):
+            try:
+                apk_output = _apply_patch(entry, arch, version, force, patcher, list_patches, dl_result, excluded_patches)
+                break
+            except PatcherError as exc:
+                clean_exc = re.sub(r'\x1b\[[0-9;]*m', '', str(exc))
+                match = re.search(r"FAILED:\s*([^\r\n]+)", clean_exc)
+                
+                if match:
+                    failed_patch = match.group(1).strip()
+                    if failed_patch in excluded_patches:
+                        raise BuilderError(f"Patch '{failed_patch}' failed again after being excluded.")
+                        
+                    wpr(f"Patch '{failed_patch}' failed. Excluding and retrying ({attempt + 1}/{max_retries})...")
+                    excluded_patches.append(failed_patch)
+                else:
+                    raise  # Not a recognized patch failure, raise original error
+        else:
+            raise BuilderError(f"Failed to patch '{label}' after {max_retries} attempts.")
+
         pr(f"Built {label}: '{apk_output}'")
         github_asset_name = re.sub(r"\.+", ".", re.sub(r"[^a-zA-Z0-9@+\-_.]", ".", apk_output.name))
         ver_str = f"[`{version}`](https://github.com/{os.getenv('GITHUB_REPOSITORY')}/releases/download/{{TAG}}/{github_asset_name})" if IS_GITHUB else f"`{version}`"
+        
+        # Inject notes about excluded patches for the release page
+        if excluded_patches:
+            excluded_str = ", ".join(f"`{p}`" for p in excluded_patches)
+            return f"- 🟢 » {label}: {ver_str} <br> ⚠️ *(Excluded due to build errors: {excluded_str})*"
+        
         return f"- 🟢 » {label}: {ver_str}"
+        
     except (BuilderError, PatcherError, ScraperError, NetworkError, SignatureError) as exc:
         if isinstance(exc, SignatureError):
             _failed_signatures.add(entry.table)
