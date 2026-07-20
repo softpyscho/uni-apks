@@ -26,7 +26,7 @@ apkmirror-dlurl = "https://www.apkmirror.com/apk/redditinc/reddit"
 patcher-args = "-e 'Custom branding name for Reddit' -OappName='Reddit'"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Reddit.patches]
 "github:MorpheApp/morphe-patches" = []
@@ -35,7 +35,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/x-corp/twitter"
 brand = "Piko"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Twitter.patches]
 "github:crimera/piko" = ["Bring back twitter", "Browse tweet object", "Dynamic color"]
@@ -45,7 +45,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/instagram/instagram-instagram"
 brand = "Piko"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Instagram.patches]
 "github:crimera/piko" = []
@@ -54,7 +54,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/cloudflare/1-1-1-1-faster-safer-internet"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [WARP.patches]
 "github:rushiranpise/morphe-patches" = []
@@ -63,7 +63,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/dapper-app-developer/cashew-expense-budget-tracker"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Cashew.patches]
 "github:rushiranpise/morphe-patches" = []
@@ -72,7 +72,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/splitwise/splitwise/"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Splitwise.patches]
 "github:rushiranpise/morphe-patches" = []
@@ -81,7 +81,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/true-software-scandinavia-ab/truecaller-caller-id-block/"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Truecaller.patches]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
@@ -90,7 +90,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/apryse-software-inc/xodo-pdf-reader-editor"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Xodo.patches]
 "github:hoo-dles/morphe-patches" = []
@@ -99,7 +99,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/amazon-mobile-llc/amazon-india-shop-pay"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Amazon-India.patches]
 "github:rushiranpise/morphe-patches" = []
@@ -108,7 +108,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/amazon-mobile-llc/amazon-prime-video/"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [Amazon-Prime-Video.patches]
 "github:hoo-dles/morphe-patches" = []
@@ -117,7 +117,7 @@ version = "stable"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/ticktick-limited/ticktick-to-do-list-with-reminder-day-planner/"
 brand = "morphe"
 arch = "arm64-v8a"
-version = "stable"
+version = "auto"
 
 [TickTick.patches]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
