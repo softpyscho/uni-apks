@@ -149,3 +149,15 @@ version = "auto"
 
 [TickTick.patches]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
+
+[Greenify]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/oasisfeng/greenify"
+uptodown-dlurl = "https://greenify.en.uptodown.com/android"
+apkpure-dlurl = "https://apkpure.com/greenify/com.oasisfeng.greenify"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "auto"
+patcher_args = []
+
+[Greenify.patches]
+"github:rushiranpise/morphe-patches" = []
