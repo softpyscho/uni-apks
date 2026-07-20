@@ -5,15 +5,16 @@ on:
       patch_source:
         description: 'Select patch source'
         required: true
-        default: 'morphe'
+        default: 'all'
         type: choice
         options:
+          - all
           - morphe
           - piko
   workflow_call:
     inputs:
       patch_source:
-        default: 'morphe'
+        default: 'all'
         type: string
       filter_changelog:
         default: false
@@ -67,9 +68,21 @@ jobs:
           FILTER_CHANGELOG: ${{ inputs.filter_changelog }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RESULT="$(uv run python -m src.scripts.matrix get-matrix '${{ inputs.patch_source }}')"
-          echo "matrix=$(echo "$RESULT" | jq -c '{include}')" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$(echo "$RESULT" | jq -r '.prerelease')" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.patch_source }}" = "all" ]; then
+            # Fetch both matrices independently
+            RES_M="$(uv run python -m src.scripts.matrix get-matrix 'morphe')"
+            RES_P="$(uv run python -m src.scripts.matrix get-matrix 'piko')"
+            
+            # Combine the JSON arrays using jq
+            COMBINED="$(jq -n --argjson m "$RES_M" --argjson p "$RES_P" '{include: ($m.include + $p.include)}')"
+            
+            echo "matrix=$(echo "$COMBINED" | jq -c '.')" >> "$GITHUB_OUTPUT"
+            echo "prerelease=$(echo "$RES_M" | jq -r '.prerelease')" >> "$GITHUB_OUTPUT"
+          else
+            RESULT="$(uv run python -m src.scripts.matrix get-matrix '${{ inputs.patch_source }}')"
+            echo "matrix=$(echo "$RESULT" | jq -c '{include}')" >> "$GITHUB_OUTPUT"
+            echo "prerelease=$(echo "$RESULT" | jq -r '.prerelease')" >> "$GITHUB_OUTPUT"
+          fi
 
   run:
     needs: prepare
