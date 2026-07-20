@@ -200,7 +200,7 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         try:
             dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
         except BuilderError as exc:
-            # Fallback to candidate versions strictly BELOW recommended version when auto-version fails
+            # Fallback to candidate versions when auto-version fails
             if entry.version == "auto":
                 fallback_version = None
                 dl_result_fallback = None
@@ -215,10 +215,18 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
                         if not versions:
                             continue
 
-                        # Filter for versions strictly below the recommended target version
+                        # Prioritize versions strictly below the recommended target version
                         candidate_versions = _get_versions_below(versions, version)
+                        
+                        # Failsafe: if no older versions exist, grab the newest available
+                        if not candidate_versions:
+                            highest_ver = get_highest_ver(versions)
+                            if highest_ver:
+                                wpr(f"No versions below '{version}' found on '{src}'. Falling back to highest available '{highest_ver}'")
+                                candidate_versions = [highest_ver]
+
                         for candidate_ver in candidate_versions:
-                            wpr(f"Target version '{version}' unavailable. Trying lower version '{candidate_ver}' from '{src}'...")
+                            wpr(f"Target version '{version}' unavailable. Trying candidate version '{candidate_ver}' from '{src}'...")
                             try:
                                 dl_result_fallback = _download_apk(entry, candidate_ver, arch, pkg_name, scrapers, src, failed_sources)
                                 fallback_version = candidate_ver
