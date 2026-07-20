@@ -85,11 +85,32 @@ def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
 
 def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[str, str, set[str]]:
     failed: set[str] = set()
+    
+    # Auto-correct common short-names to actual Android package IDs 
+    # (happens when Github/Uptodown scrapers guess the package from the URL slug)
+    known_pkgs = {
+        "instagram": "com.instagram.android",
+        "twitter": "com.twitter.android",
+        "x": "com.twitter.android",
+        "reddit": "com.reddit.frontpage",
+        "youtube": "com.google.android.youtube",
+        "youtube-music": "com.google.android.apps.youtube.music",
+        "tiktok": "com.ss.android.ugc.trill",
+    }
+
     for src, url in entry.dl_urls.items():
         try:
             metadata = scrapers[src].cached_metadata(url)
-            pr(f"Package name of '{entry.table}' is '{metadata.pkg_name}'")
-            return metadata.pkg_name, src, failed
+            
+            # Prioritize an explicitly defined pkg_name in config.toml, else use scraper metadata
+            pkg_name = getattr(entry, "pkg_name", None) or metadata.pkg_name
+            
+            # Fix bad names dynamically
+            if pkg_name and pkg_name.lower() in known_pkgs:
+                pkg_name = known_pkgs[pkg_name.lower()]
+
+            pr(f"Package name of '{entry.table}' is '{pkg_name}'")
+            return pkg_name, src, failed
         except (NetworkError, ScraperError) as exc:
             epr(f"Could not find '{entry.table}' in '{src}': {exc}")
             failed.add(src)
