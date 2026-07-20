@@ -165,28 +165,38 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
             # Automatic fallback to scraped latest when target auto-version is missing across all mirrors
             if entry.version == "auto":
                 fallback_version = None
-                fallback_src = dl_from
+                dl_result_fallback = None
                 
-                # Resolve a concrete latest version from a working scraper
-                for src in entry.dl_urls:
+                # Prioritize alternative mirrors because APKMirror often blocks downloads of popular apps
+                fallback_order = [s for s in ["apkpure", "uptodown", "github"] if s in entry.dl_urls]
+                if "apkmirror" in entry.dl_urls:
+                    fallback_order.append("apkmirror")
+
+                for src in fallback_order:
                     try:
                         versions = scrapers[src].cached_metadata(entry.dl_urls[src]).versions
-                        if versions:
-                            v = get_highest_ver(versions)
-                            if v:
+                        if not versions:
+                            continue
+                            
+                        v = get_highest_ver(versions)
+                        if v:
+                            wpr(f"Exact version '{version}' not found. Trying scraped latest '{v}' from '{src}'...")
+                            try:
+                                # Attempt to download this specific version using this source first
+                                dl_result_fallback = _download_apk(entry, v, arch, pkg_name, scrapers, src, failed_sources)
                                 fallback_version = v
-                                fallback_src = src
-                                break
+                                break # If download succeeds, break out of the loop
+                            except BuilderError:
+                                wpr(f"Failed to download fallback version '{v}' from '{src}', trying next mirror...")
+                                continue
                     except Exception:
                         continue
 
-                if fallback_version:
-                    wpr(f"Exact version '{version}' for '{label}' was not found. Falling back to scraped latest version '{fallback_version}' from '{fallback_src}'...")
-                    version = fallback_version  # Update the main version variable so file naming works
+                if fallback_version and dl_result_fallback:
+                    version = fallback_version  # Update main version variable
                     force = True  # Enable experimental flag for patcher
                     list_patches = patcher.list_patches(pkg_name, experimental=True)
-                    # Use fallback_src as the primary source to avoid hitting the broken one first
-                    dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, fallback_src, failed_sources)
+                    dl_result = dl_result_fallback
                 else:
                     raise exc
             else:
