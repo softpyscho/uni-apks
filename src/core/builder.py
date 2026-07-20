@@ -86,8 +86,6 @@ def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
 def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[str, str, set[str]]:
     failed: set[str] = set()
     
-    # Auto-correct common short-names to actual Android package IDs 
-    # (happens when Github/Uptodown scrapers guess the package from the URL slug)
     known_pkgs = {
         "instagram": "com.instagram.android",
         "twitter": "com.twitter.android",
@@ -101,11 +99,8 @@ def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[s
     for src, url in entry.dl_urls.items():
         try:
             metadata = scrapers[src].cached_metadata(url)
-            
-            # Prioritize an explicitly defined pkg_name in config.toml, else use scraper metadata
             pkg_name = getattr(entry, "pkg_name", None) or metadata.pkg_name
             
-            # Fix bad names dynamically
             if pkg_name and pkg_name.lower() in known_pkgs:
                 pkg_name = known_pkgs[pkg_name.lower()]
 
@@ -159,6 +154,56 @@ def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrap
     raise BuilderError("Stock APK not found")
 
 
+def _optimize_bundle(src_bundle: Path, dest_bundle: Path, target_arch: str) -> None:
+    """
+    Reads an .apkm or .xapk bundle and writes a new one stripping out all unused
+    languages (keeps only English), architectures, and densities (keeps only xxhdpi).
+    """
+    pr(f"Optimizing split bundle: Extracting base + English + xxhdpi + {target_arch}...")
+    
+    # Regex for standard split structures
+    re_lang = re.compile(r'(?:split_)?config\.([a-z]{2}(?:-[a-zA-Z]{2,3})?)\.apk', re.IGNORECASE)
+    re_dpi = re.compile(r'(?:split_)?config\.(l|m|tv|h|xh|xxh|xxxh)dpi\.apk', re.IGNORECASE)
+    re_abi = re.compile(r'(?:split_)?config\.(armeabi_v7a|arm64_v8a|x86|x86_64)\.apk', re.IGNORECASE)
+    
+    target_abi = "arm64_v8a" if "arm64" in target_arch.lower() else "armeabi_v7a"
+    
+    with zipfile.ZipFile(src_bundle, 'r') as z_in, zipfile.ZipFile(dest_bundle, 'w') as z_out:
+        for item in z_in.infolist():
+            lower_name = item.filename.lower()
+            
+            # Non-APK files (like metadata) are kept to preserve bundle structure
+            if not lower_name.endswith('.apk'):
+                z_out.writestr(item, z_in.read(item.filename))
+                continue
+                
+            keep = True
+            
+            # Check if it's a language split we don't want
+            lang_match = re_lang.search(lower_name)
+            if lang_match:
+                lang = lang_match.group(1).lower()
+                if not lang.startswith('en'):
+                    keep = False
+            
+            # Check if it's a DPI split we don't want
+            dpi_match = re_dpi.search(lower_name)
+            if dpi_match:
+                dpi = dpi_match.group(1).lower()
+                if dpi != 'xxh':
+                    keep = False
+                    
+            # Check if it's an architecture split we don't want
+            abi_match = re_abi.search(lower_name)
+            if abi_match:
+                abi = abi_match.group(1).lower()
+                if abi != target_abi:
+                    keep = False
+                    
+            if keep:
+                z_out.writestr(item, z_in.read(item.filename))
+
+
 def _extract_base_apk(apkm: Path, pkg_name: str, dest_dir: Path) -> Path:
     with zipfile.ZipFile(apkm, "r") as zf:
         names = zf.NameToInfo
@@ -198,7 +243,6 @@ def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher:
     version_f = version.replace(" ", "").lstrip("v")
     auto_patches = patcher.resolve_auto_patches(list_patches)
     
-    # Inject dynamically excluded patches
     dynamic_args = list(entry.patcher_args)
     for p in excluded_patches:
         dynamic_args.extend(["-e", p])
@@ -210,7 +254,6 @@ def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher:
 
     pr(f"Building '{entry.table}'")
 
-    # Hook subprocess.run to aggressively capture Java output for error parsing
     original_run = subprocess.run
     captured_out = []
     
@@ -231,7 +274,6 @@ def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher:
     try:
         patcher.patch(dl_result.path, patched_apk, final_args)
     except Exception as exc:
-        # Combine the original exception message with the captured console output
         full_out = "\n".join(captured_out)
         raise BuilderError(f"{exc}\n{full_out}") from exc
     finally:
@@ -256,7 +298,6 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         try:
             dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
         except BuilderError as exc:
-            # Fallback handling covers BOTH "auto" and "latest" flags now
             if entry.version in ("auto", "latest"):
                 fallback_version = None
                 dl_result_fallback = None
@@ -308,6 +349,17 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
 
         _verify_sig(dl_result, pkg_name, patcher, label, entry.skip_sigcheck, strict_sigcheck)
         
+        # ----------------------------------------------------
+        # NEW: Bundle Optimization logic (Strip bloat splits)
+        # ----------------------------------------------------
+        if dl_result.is_bundle:
+            optimized_bundle = TEMP_DIR / f"lean_{dl_result.path.name}"
+            _optimize_bundle(dl_result.path, optimized_bundle, arch)
+            
+            # Point the dl_result to the new lightweight bundle for the patcher
+            dl_result = DownloadResult(path=optimized_bundle, is_bundle=True)
+            
+        
         # Dynamic Exclude Loop (Max 5 retries to prevent endless loops)
         excluded_patches = []
         max_retries = 5
@@ -319,7 +371,6 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
                 break
             except (PatcherError, BuilderError) as exc:
                 clean_exc = re.sub(r'\x1b\[[0-9;]*m', '', str(exc))
-                # Hunt for the specific failed patch name in the intercepted logs
                 match = re.search(r"FAILED:\s*([^\r\n]+)", clean_exc)
                 
                 if match:
@@ -330,7 +381,7 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
                     wpr(f"Patch '{failed_patch}' failed. Excluding and retrying ({attempt + 1}/{max_retries})...")
                     excluded_patches.append(failed_patch)
                 else:
-                    raise  # Not a recognized patch failure, raise original error
+                    raise  
         else:
             raise BuilderError(f"Failed to patch '{label}' after {max_retries} attempts.")
 
@@ -338,7 +389,6 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         github_asset_name = re.sub(r"\.+", ".", re.sub(r"[^a-zA-Z0-9@+\-_.]", ".", apk_output.name))
         ver_str = f"[`{version}`](https://github.com/{os.getenv('GITHUB_REPOSITORY')}/releases/download/{{TAG}}/{github_asset_name})" if IS_GITHUB else f"`{version}`"
         
-        # Inject notes about excluded patches for the release page
         if excluded_patches:
             excluded_str = ", ".join(f"`{p}`" for p in excluded_patches)
             return f"- 🟢 » {label}: {ver_str} <br> ⚠️ *(Excluded due to build errors: {excluded_str})*"
