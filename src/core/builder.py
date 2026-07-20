@@ -162,13 +162,33 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         try:
             dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
         except BuilderError as exc:
-            # Automatic fallback to 'latest' when target auto-version is missing across all mirrors
+            # Automatic fallback to scraped latest when target auto-version is missing across all mirrors
             if entry.version == "auto":
-                wpr(f"Exact version '{version}' for '{label}' was not found on mirrors. Falling back to 'latest'...")
-                version = "latest"
-                force = True  # Enable experimental flag for patcher
-                list_patches = patcher.list_patches(pkg_name, experimental=True)
-                dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
+                fallback_version = None
+                fallback_src = dl_from
+                
+                # Resolve a concrete latest version from a working scraper
+                for src in entry.dl_urls:
+                    try:
+                        versions = scrapers[src].cached_metadata(entry.dl_urls[src]).versions
+                        if versions:
+                            v = get_highest_ver(versions)
+                            if v:
+                                fallback_version = v
+                                fallback_src = src
+                                break
+                    except Exception:
+                        continue
+
+                if fallback_version:
+                    wpr(f"Exact version '{version}' for '{label}' was not found. Falling back to scraped latest version '{fallback_version}' from '{fallback_src}'...")
+                    version = fallback_version  # Update the main version variable so file naming works
+                    force = True  # Enable experimental flag for patcher
+                    list_patches = patcher.list_patches(pkg_name, experimental=True)
+                    # Use fallback_src as the primary source to avoid hitting the broken one first
+                    dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, fallback_src, failed_sources)
+                else:
+                    raise exc
             else:
                 raise exc
 
