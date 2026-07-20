@@ -16,6 +16,8 @@ import re
 import shutil
 import tempfile
 import zipfile
+import subprocess
+import sys
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -186,7 +188,34 @@ def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher:
     patched_apk = TEMP_DIR / apk_name
 
     pr(f"Building '{entry.table}'")
-    patcher.patch(dl_result.path, patched_apk, final_args)
+
+    # Hook subprocess.run to aggressively capture Java output for error parsing
+    original_run = subprocess.run
+    captured_out = []
+    
+    def hooked_run(*args, **kwargs):
+        kwargs['capture_output'] = True
+        kwargs['text'] = True
+        res = original_run(*args, **kwargs)
+        if res.stdout:
+            print(res.stdout)
+            captured_out.append(res.stdout)
+        if res.stderr:
+            print(res.stderr, file=sys.stderr)
+            captured_out.append(res.stderr)
+        return res
+        
+    subprocess.run = hooked_run
+    
+    try:
+        patcher.patch(dl_result.path, patched_apk, final_args)
+    except Exception as exc:
+        # Combine the original exception message with the captured console output
+        full_out = "\n".join(captured_out)
+        raise BuilderError(f"{exc}\n{full_out}") from exc
+    finally:
+        subprocess.run = original_run
+
     apk_output = BUILD_DIR / apk_name
     shutil.move(patched_apk, apk_output)
     return apk_output
@@ -206,8 +235,8 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         try:
             dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
         except BuilderError as exc:
-            # Fallback handling when auto-version fails
-            if entry.version == "auto":
+            # Fallback handling covers BOTH "auto" and "latest" flags now
+            if entry.version in ("auto", "latest"):
                 fallback_version = None
                 dl_result_fallback = None
                 fallback_order = [s for s in ["uptodown", "apkpure", "github", "apkmirror"] if s in entry.dl_urls]
@@ -258,17 +287,18 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
 
         _verify_sig(dl_result, pkg_name, patcher, label, entry.skip_sigcheck, strict_sigcheck)
         
-        # Dynamic Exclude Loop
+        # Dynamic Exclude Loop (Max 5 retries to prevent endless loops)
         excluded_patches = []
-        max_retries = 10
+        max_retries = 5
         apk_output = None
         
         for attempt in range(max_retries):
             try:
                 apk_output = _apply_patch(entry, arch, version, force, patcher, list_patches, dl_result, excluded_patches)
                 break
-            except PatcherError as exc:
+            except (PatcherError, BuilderError) as exc:
                 clean_exc = re.sub(r'\x1b\[[0-9;]*m', '', str(exc))
+                # Hunt for the specific failed patch name in the intercepted logs
                 match = re.search(r"FAILED:\s*([^\r\n]+)", clean_exc)
                 
                 if match:
