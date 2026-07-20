@@ -32,11 +32,42 @@ _failed_signatures: set[str] = set()
 class BuilderError(Exception):
     pass
 
+
+def _parse_ver(v_str: str) -> tuple:
+    """Safely parse a version string into a comparable tuple key."""
+    cleaned = re.sub(r"^[vV]", "", v_str.strip())
+    parts = []
+    for token in re.split(r"[._-]", cleaned):
+        if token.isdigit():
+            parts.append((0, int(token), ""))
+        else:
+            m = re.match(r"^(\d+)(.*)$", token)
+            if m:
+                parts.append((0, int(m.group(1)), m.group(2)))
+            else:
+                parts.append((1, 0, token))
+    return tuple(parts)
+
+
+def _get_versions_below(versions: list[str], target_ver: str) -> list[str]:
+    """Return versions strictly below target_ver, sorted from highest to lowest."""
+    target_key = _parse_ver(target_ver)
+    valid = []
+    for v in versions:
+        try:
+            if _parse_ver(v) < target_key:
+                valid.append(v)
+        except Exception:
+            continue
+    valid.sort(key=_parse_ver, reverse=True)
+    return valid
+
+
 def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
     from src.scrapers.apkmirror import APKMirrorScraper
+    from src.scrapers.apkpure import APKPureScraper
     from src.scrapers.github import GitHubScraper
     from src.scrapers.uptodown import UptodownScraper
-    from src.scrapers.apkpure import APKPureScraper
     match source:
         case "apkmirror":
             return APKMirrorScraper(net)
@@ -49,6 +80,7 @@ def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
         case _:
             raise ValueError(f"Unknown APK source: {source!r}")
 
+
 def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[str, str, set[str]]:
     failed: set[str] = set()
     for src, url in entry.dl_urls.items():
@@ -60,6 +92,7 @@ def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[s
             epr(f"Could not find '{entry.table}' in '{src}': {exc}")
             failed.add(src)
     raise BuilderError("Package name not found")
+
 
 def _resolve_version(entry: AppEntry, patcher: PatcherCLI, list_patches: str, pkg_name: str, dl_from: str, scrapers: dict[str, BaseScraper]) -> tuple[str, bool]:
     if entry.version not in ("auto", "latest"):
@@ -75,6 +108,7 @@ def _resolve_version(entry: AppEntry, patcher: PatcherCLI, list_patches: str, pk
 
     pr(f"Choosing version '{version}' for '{entry.table}'")
     return version, is_custom
+
 
 def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrapers: dict[str, BaseScraper], dl_from: str, failed_sources: set[str]) -> DownloadResult:
     arch_f = arch.replace(" ", "")
@@ -101,6 +135,7 @@ def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrap
             epr(f"Failed to fetch '{entry.table}' from '{src}' (version='{version}', arch='{arch}'): {exc}")
     raise BuilderError("Stock APK not found")
 
+
 def _extract_base_apk(apkm: Path, pkg_name: str, dest_dir: Path) -> Path:
     with zipfile.ZipFile(apkm, "r") as zf:
         names = zf.NameToInfo
@@ -109,6 +144,7 @@ def _extract_base_apk(apkm: Path, pkg_name: str, dest_dir: Path) -> Path:
                 zf.extract(name, dest_dir)
                 return dest_dir / name
     raise BuilderError(f"Neither 'base.apk' nor '{pkg_name}.apk' found inside {apkm.name}")
+
 
 def _verify_sig(dl_result: DownloadResult, pkg_name: str, patcher: PatcherCLI, table: str, skip_sigcheck: bool, strict_sigcheck: bool) -> None:
     if skip_sigcheck:
@@ -133,6 +169,7 @@ def _verify_sig(dl_result: DownloadResult, pkg_name: str, patcher: PatcherCLI, t
         if not patcher.check_signature(apk_path, pkg_name):
             raise SignatureError("Bundle APK signature mismatch")
 
+
 def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher: PatcherCLI, list_patches: str, dl_result: DownloadResult) -> Path:
     arch_f = arch.replace(" ", "")
     version_f = version.replace(" ", "").lstrip("v")
@@ -148,6 +185,7 @@ def _apply_patch(entry: AppEntry, arch: str, version: str, force: bool, patcher:
     shutil.move(patched_apk, apk_output)
     return apk_output
 
+
 def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, patcher: PatcherCLI, strict_sigcheck: bool) -> str | None:
     if entry.table in _failed_signatures:
         epr(f"Skipped '{label}' due to previous signature mismatch")
@@ -158,16 +196,15 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         pkg_name, dl_from, failed_sources = _find_pkg_name(entry, scrapers)
         list_patches = patcher.list_patches(pkg_name, experimental=entry.version == "latest")
         version, force = _resolve_version(entry, patcher, list_patches, pkg_name, dl_from, scrapers)
-        
+
         try:
             dl_result = _download_apk(entry, version, arch, pkg_name, scrapers, dl_from, failed_sources)
         except BuilderError as exc:
-            # Automatic fallback to scraped latest when target auto-version is missing across all mirrors
+            # Fallback to candidate versions strictly BELOW recommended version when auto-version fails
             if entry.version == "auto":
                 fallback_version = None
                 dl_result_fallback = None
-                
-                # Prioritize alternative mirrors because APKMirror often blocks downloads of popular apps
+
                 fallback_order = [s for s in ["apkpure", "uptodown", "github"] if s in entry.dl_urls]
                 if "apkmirror" in entry.dl_urls:
                     fallback_order.append("apkmirror")
@@ -177,24 +214,27 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
                         versions = scrapers[src].cached_metadata(entry.dl_urls[src]).versions
                         if not versions:
                             continue
-                            
-                        v = get_highest_ver(versions)
-                        if v:
-                            wpr(f"Exact version '{version}' not found. Trying scraped latest '{v}' from '{src}'...")
+
+                        # Filter for versions strictly below the recommended target version
+                        candidate_versions = _get_versions_below(versions, version)
+                        for candidate_ver in candidate_versions:
+                            wpr(f"Target version '{version}' unavailable. Trying lower version '{candidate_ver}' from '{src}'...")
                             try:
-                                # Attempt to download this specific version using this source first
-                                dl_result_fallback = _download_apk(entry, v, arch, pkg_name, scrapers, src, failed_sources)
-                                fallback_version = v
-                                break # If download succeeds, break out of the loop
+                                dl_result_fallback = _download_apk(entry, candidate_ver, arch, pkg_name, scrapers, src, failed_sources)
+                                fallback_version = candidate_ver
+                                break
                             except BuilderError:
-                                wpr(f"Failed to download fallback version '{v}' from '{src}', trying next mirror...")
+                                wpr(f"Failed to download version '{candidate_ver}' from '{src}', trying next candidate...")
                                 continue
+
+                        if dl_result_fallback:
+                            break
                     except Exception:
                         continue
 
                 if fallback_version and dl_result_fallback:
-                    version = fallback_version  # Update main version variable
-                    force = True  # Enable experimental flag for patcher
+                    version = fallback_version
+                    force = True
                     list_patches = patcher.list_patches(pkg_name, experimental=True)
                     dl_result = dl_result_fallback
                 else:
@@ -215,6 +255,7 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         if not is_interrupted():
             epr(f"Building '{label}' failed! {exc}")
         return None
+
 
 def _submit_entries(entries: list[AppEntry], pool: ThreadPoolExecutor, net: NetworkManager, ks_path: Path | None, strict_sigcheck: bool) -> list[Future[str | None]]:
     futures: list[Future[str | None]] = []
@@ -261,6 +302,7 @@ def _submit_entries(entries: list[AppEntry], pool: ThreadPoolExecutor, net: Netw
             label = entry.app_name if entry.arch == "all" else f"{entry.app_name} ({arch})"
             futures.append(pool.submit(_build_single, entry, arch, label, net, patcher, strict_sigcheck))
     return futures
+
 
 def run_build(entries: list[AppEntry], config: Config, net: NetworkManager) -> bool:
     if not entries:
