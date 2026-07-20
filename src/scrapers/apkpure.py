@@ -106,9 +106,9 @@ class APKPureScraper(BaseScraper):
         
         if not download_btn or not download_btn.get("href"):
             # Sometimes APKPure obfuscates the link in a script tag if Cloudflare is heavy
-            script_tag = soup.find(string=re.compile(r'win\.location\.href\s*=\s*[\'"](https://d\.apkpure\.com[^'"]+)'))
+            script_tag = soup.find(string=re.compile(r"""win\.location\.href\s*=\s*['"](https://d\.apkpure\.com[^'"]+)"""))
             if script_tag:
-                m = re.search(r'win\.location\.href\s*=\s*[\'"](https://d\.apkpure\.com[^'"]+)', script_tag)
+                m = re.search(r"""win\.location\.href\s*=\s*['"](https://d\.apkpure\.com[^'"]+)""", script_tag)
                 if m:
                     final_url = m.group(1)
                 else:
