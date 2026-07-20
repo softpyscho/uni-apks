@@ -1,82 +1,123 @@
 parallel-jobs = 1
+strict-sigcheck = false
 
 [YouTube]
-uptodown-dlurl = "https://youtube.en.uptodown.com/android"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube"
-patcher-args = "-e 'Change header' -Ocustom=icons/YouTube/header -e 'Custom branding' -OcustomIcon=icons/YouTube/branding -OcustomName=Morphe"
+patcher-args = "-e 'Change header' -Ocustom=icons/YouTube/header -e 'Custom branding' -OcustomIcon=icons/YouTube/branding -OcustomName=YouTube Morphe"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "auto"
 
 [YouTube.patches]
 "github:MorpheApp/morphe-patches" = []
 
-[YouTube-Experimental]
-uptodown-dlurl = "https://youtube.en.uptodown.com/android"
-apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube"
-patcher-args = "-e 'Change header' -Ocustom=icons/YouTube/header -e 'Custom branding' -OcustomIcon=icons/YouTube/branding -OcustomName=Morphe"
-version = "latest"
-
-[YouTube-Experimental.patches]
-"github:MorpheApp/morphe-patches" = []
-
 [Music]
-uptodown-dlurl = "https://youtube-music.en.uptodown.com/android"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube-music"
-patcher-args = "-e 'Change header' -Ocustom=icons/Music/header -e 'Custom branding' -OcustomIcon=icons/Music/branding -OcustomName='Morphe Music'"
-arch = "both"
+patcher-args = "-e 'Change header' -Ocustom=icons/Music/header -e 'Custom branding' -OcustomIcon=icons/Music/branding -OcustomName='Youtube Music Morphe'"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "auto"
 
 [Music.patches]
 "github:MorpheApp/morphe-patches" = []
 
-[Music-Experimental]
-uptodown-dlurl = "https://youtube-music.en.uptodown.com/android"
-apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube-music"
-patcher-args = "-e 'Change header' -Ocustom=icons/Music/header -e 'Custom branding' -OcustomIcon=icons/Music/branding -OcustomName='Morphe Music'"
-arch = "both"
-version = "latest"
-
-[Music-Experimental.patches]
-"github:MorpheApp/morphe-patches" = []
-
 [Reddit]
-uptodown-dlurl = "https://reddit-official-app.en.uptodown.com/android"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/redditinc/reddit"
-patcher-args = "-e 'Custom branding name for Reddit' -OappName='Morphe Reddit'"
+patcher-args = "-e 'Custom branding name for Reddit' -OappName='Reddit'"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
 
 [Reddit.patches]
 "github:MorpheApp/morphe-patches" = []
 
-[Reddit-Experimental]
-uptodown-dlurl = "https://reddit-official-app.en.uptodown.com/android"
-apkmirror-dlurl = "https://www.apkmirror.com/apk/redditinc/reddit"
-patcher-args = "-e 'Custom branding name for Reddit' -OappName='Morphe Reddit'"
-version = "latest"
-
-[Reddit-Experimental.patches]
-"github:MorpheApp/morphe-patches" = []
-
-[X]
-uptodown-dlurl = "https://twitter.en.uptodown.com/android"
-apkmirror-dlurl = "https://www.apkmirror.com/apk/x-corp/twitter"
-brand = "Piko"
-
-[X.patches]
-"github:crimera/piko" = ["Browse tweet object", "Dynamic color"]
-"gitlab:inotia00/x-shim" = []
-
 [Twitter]
-uptodown-dlurl = "https://twitter.en.uptodown.com/android"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/x-corp/twitter"
 brand = "Piko"
+arch = "arm64-v8a"
+version = "stable"
 
 [Twitter.patches]
 "github:crimera/piko" = ["Bring back twitter", "Browse tweet object", "Dynamic color"]
 "gitlab:inotia00/x-shim" = []
 
 [Instagram]
-# uptodown-dlurl = "https://instagram.en.uptodown.com/android"
-# apkmirror-dlurl = "https://www.apkmirror.com/apk/instagram/instagram-instagram"
-github-dlurl = "https://github.com/krvstek/uni-storage/releases/tag/instagram"
+apkmirror-dlurl = "https://www.apkmirror.com/apk/instagram/instagram-instagram"
 brand = "Piko"
 arch = "arm64-v8a"
+version = "stable"
 
 [Instagram.patches]
 "github:crimera/piko" = []
+
+[1.1.1.1 + WARP]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/cloudflare/1-1-1-1-faster-safer-internet"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[1.1.1.1 + WARP.patches]
+"github:rushiranpise/morphe-patches" = []
+
+[Cashew]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/dapper-app-developer/cashew-expense-budget-tracker"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[Cashew.patches]
+"github:rushiranpise/morphe-patches" = []
+
+[Splitwise]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/splitwise/splitwise/"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[Splitwise.patches]
+"github:rushiranpise/morphe-patches" = []
+
+[Truecaller]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/true-software-scandinavia-ab/truecaller-caller-id-block/"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[Truecaller.patches]
+"gitlab:Paresh-Maheshwari/paresh-patches" = []
+
+[Xodo]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/apryse-software-inc/xodo-pdf-reader-editor"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[Xodo.patches]
+"github:hoo-dles/morphe-patches" = []
+
+[Amazon India]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/amazon-mobile-llc/amazon-india-shop-pay"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[Amazon India.patches]
+"github:rushiranpise/morphe-patches" = []
+
+[Amazon Prime Video]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/amazon-mobile-llc/amazon-prime-video/"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[Amazon Prime Video.patches]
+"github:hoo-dles/morphe-patches" = []
+
+[TickTick]
+apkmirror-dlurl = "https://www.apkmirror.com/apk/ticktick-limited/ticktick-to-do-list-with-reminder-day-planner/"
+brand = "morphe"
+arch = "arm64-v8a"
+version = "stable"
+
+[TickTick.patches]
+"gitlab:Paresh-Maheshwari/paresh-patches" = []
